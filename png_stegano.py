@@ -95,15 +95,3 @@ def get_data_from_png(png_bytes, chunk_type=b'steg'):
 
         if chunk.type == b'IEND':
             break
-
-
-if __name__ == '__main__':
-    with open('image.png', 'rb') as f:
-        buffer = f.read()
-
-    print_png_chunks(buffer)
-    print()
-    buffer_with_data = hide_data_in_png(buffer, b'Hello, World')
-    print_png_chunks(buffer_with_data)
-
-    print(get_data_from_png(buffer_with_data))
