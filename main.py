@@ -1,6 +1,7 @@
 import struct
 
 PNG_START_BYTES = bytes((137, 80, 78, 71, 13, 10, 26, 10))
+PNG_START_BYTES_LEN = 8
 
 
 class Chunk:
@@ -11,6 +12,7 @@ class Chunk:
         self.crc = crc if crc is not None else self.calculate_crc()
 
     def calculate_crc(self):
+        # TODO crc
         return 0
 
     @property
@@ -46,9 +48,9 @@ class Chunk:
 
 
 def print_png_chunks(png_bytes):
-    assert png_bytes[:8] == PNG_START_BYTES, 'Invalid PNG'
+    assert png_bytes[:PNG_START_BYTES_LEN] == PNG_START_BYTES, 'Invalid PNG'
 
-    cur_pos = 8
+    cur_pos = PNG_START_BYTES_LEN
     while True:
         chunk = Chunk.from_bytes(png_bytes, cur_pos)
         cur_pos += chunk.total_length
@@ -59,11 +61,11 @@ def print_png_chunks(png_bytes):
 
 
 def hide_data_in_png(png_bytes, data_bytes, chunk_type='steg'):
-    assert png_bytes[:8] == PNG_START_BYTES, 'Invalid PNG'
+    assert png_bytes[:PNG_START_BYTES_LEN] == PNG_START_BYTES, 'Invalid PNG'
     res_bytes = PNG_START_BYTES
 
     data_chunk = Chunk(len(data_bytes), bytes(chunk_type, 'utf8'), data_bytes).to_bytes()
-    cur_pos = 8
+    cur_pos = PNG_START_BYTES_LEN
     while True:
         chunk = Chunk.from_bytes(png_bytes, cur_pos)
         cur_pos += chunk.total_length
@@ -79,9 +81,9 @@ def hide_data_in_png(png_bytes, data_bytes, chunk_type='steg'):
 
 
 def get_data_from_png(png_bytes, chunk_type='steg'):
-    assert png_bytes[:8] == PNG_START_BYTES, 'Invalid PNG'
+    assert png_bytes[:PNG_START_BYTES_LEN] == PNG_START_BYTES, 'Invalid PNG'
 
-    cur_pos = 8
+    cur_pos = PNG_START_BYTES_LEN
     while True:
         chunk = Chunk.from_bytes(png_bytes, cur_pos)
         cur_pos += chunk.total_length
