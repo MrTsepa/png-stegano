@@ -15,11 +15,9 @@ class PngSteganographer:
 
 class SimpleSteganographer(PngSteganographer):
     def hide(self, png_bytes, data_bytes, chunk_type=b'steg'):
-        assert png_bytes[:PNG_START_BYTES_LEN] == PNG_START_BYTES, 'Invalid PNG'
-        set_chunk_data(png_bytes, chunk_type, data_bytes)
+        return add_chunk_data(png_bytes, chunk_type, data_bytes)
 
     def get(self, png_bytes, chunk_type=b'steg'):
-        assert png_bytes[:PNG_START_BYTES_LEN] == PNG_START_BYTES, 'Invalid PNG'
         return get_chunk_data(png_bytes, chunk_type)
 
 
@@ -44,6 +42,8 @@ class FilterSteganographer(PngSteganographer):
         print('filter bits found: ', ''.join(str(bit) for bit in filter_bits if bit < 2))
 
         bits = ''.join(str(bit) for bit in filter_bits if bit < 2)
+        if not bits:
+            bits = '0'
         n = int(bits, base=2)
         return n.to_bytes((n.bit_length() + 7) // 8, 'big')
 

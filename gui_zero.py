@@ -3,6 +3,8 @@ from tkinter.filedialog import askopenfilename, asksaveasfile
 
 from png_stegano import FilterSteganographer
 
+import string
+
 input_path = None
 buffer = None
 
@@ -19,7 +21,10 @@ def choose_file():
 
     hidden_data = FilterSteganographer().get(buffer)
     hidden_data_text.set("Hidden data found: ")
-    hidden_data_red_text.set(hidden_data)
+    if (hidden_data and all(chr(byte) in string.printable for byte in hidden_data)):
+        hidden_data_red_text.set(hidden_data)
+    else:    
+        hidden_data_red_text.set('No data')
 
 
 def save_file():
