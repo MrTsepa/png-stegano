@@ -1,14 +1,14 @@
 from guizero import App, Text, PushButton, TextBox, Box, error
 from tkinter.filedialog import askopenfilename, asksaveasfile
 
-from png_stegano import hide_data_in_png, get_data_from_png
+from png_stegano import FilterSteganographer
 
 input_path = None
 buffer = None
 
 
 def choose_file():
-    global input_path
+    global input_path, buffer
     input_path = askopenfilename(
         filetypes=(("PNG images", "*.png"), ("All Files", "*.*")),
         title="Choose image"
@@ -17,22 +17,20 @@ def choose_file():
     with open(input_path, 'rb') as f:
         buffer = f.read()
 
-    hidden_data = get_data_from_png(buffer)
-    if hidden_data:
-        save_file_widget.disable()
-        hidden_data_text.set("Hidden data found: ")
-        hidden_data_red_text.set(hidden_data.decode())
-    else:
-        save_file_widget.enable()
-        hidden_data_text.clear()
-        hidden_data_red_text.clear()
+    hidden_data = FilterSteganographer().get(buffer)
+    hidden_data_text.set("Hidden data found: ")
+    hidden_data_red_text.set(hidden_data)
 
 
 def save_file():
     if not buffer:
         error('Error', 'No file loaded!')
         return
-    buffer_with_data = hide_data_in_png(buffer, bytes(text_box_secret.get(), encoding='utf8'))
+    try:
+        buffer_with_data = FilterSteganographer().hide(buffer, bytes(text_box_secret.get(), encoding='utf8'))
+    except AssertionError as e:
+        error('Error', e)
+        return 
     f = asksaveasfile(mode='wb', defaultextension=".png")
     if f is None:  # asksaveasfile return `None` if dialog closed with "cancel".
         return

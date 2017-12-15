@@ -4,5 +4,11 @@ with open('image.png', 'rb') as f:
     png_buffer = f.read()
 
 steg = FilterSteganographer()
-print(get_png_color_flags(png_buffer))
-print(steg.get(png_buffer))
+png_with_data = steg.hide(png_buffer, b'hel')
+with open('image_with_data.png', 'wb') as f:
+    f.write(png_with_data)
+
+
+with open('image_with_data.png', 'rb') as f:
+    png_buffer = f.read()
+print(FilterSteganographer().get(png_buffer))

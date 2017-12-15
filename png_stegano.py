@@ -1,53 +1,8 @@
-import struct
-import binascii
-
 import zlib
 
-PNG_START_BYTES = bytearray((137, 80, 78, 71, 13, 10, 26, 10))
-PNG_START_BYTES_LEN = 8
-
-
-class Chunk:
-    def __init__(self, length, type, data, crc=None):
-        self.length = length
-        self.type = type
-        self.data = data
-        self.crc = crc if crc is not None else self.calculate_crc()
-
-    def calculate_crc(self):
-        return binascii.crc32(self.type + self.data)
-
-    @property
-    def total_length(self):
-        return 4 + 4 + self.length + 4
-
-    @staticmethod
-    def from_bytes(buffer, pos):
-        cur_pos = pos
-
-        length, = struct.unpack('>I', buffer[cur_pos:cur_pos + 4])
-        cur_pos += 4
-
-        chunk_type = buffer[cur_pos:cur_pos + 4]
-        cur_pos += 4
-
-        data = buffer[cur_pos:cur_pos + length]
-        cur_pos += length
-
-        crc, = struct.unpack('>I', buffer[cur_pos:cur_pos + 4])
-        cur_pos += 4
-
-        return Chunk(length, chunk_type, data, crc)
-
-    def to_bytes(self):
-        length_bytes = struct.pack('>I', self.length)
-        crc_bytes = struct.pack('>I', self.crc)
-        return length_bytes + self.type + self.data + crc_bytes
-
-    def __str__(self):
-            return 'Type: {}, length: {}, data: {}, crc: {}, calculated crc: {}'.\
-                format(self.type, self.length, self.data if self.length <= 15 else self.data[:15] + b'...',
-                       self.crc, self.calculate_crc())
+from filter_utils import reconstruct_scanline, FILTER, filter_scanline
+from png_utils import set_chunk_data, PNG_START_BYTES_LEN, PNG_START_BYTES, get_chunk_data, get_png_size, \
+    get_png_color_flags, get_pixel_size
 
 
 class PngSteganographer:
@@ -61,32 +16,16 @@ class PngSteganographer:
 class SimpleSteganographer(PngSteganographer):
     def hide(self, png_bytes, data_bytes, chunk_type=b'steg'):
         assert png_bytes[:PNG_START_BYTES_LEN] == PNG_START_BYTES, 'Invalid PNG'
-        res_bytes = b''
-        res_bytes += PNG_START_BYTES
-
-        data_chunk = Chunk(len(data_bytes), chunk_type, data_bytes).to_bytes()
-        cur_pos = PNG_START_BYTES_LEN
-        while True:
-            chunk = Chunk.from_bytes(png_bytes, cur_pos)
-            cur_pos += chunk.total_length
-            res_bytes += chunk.to_bytes()
-
-            if chunk.type == b'IHDR':
-                res_bytes += data_chunk
-
-            if chunk.type == b'IEND':
-                break
-
-        return res_bytes
+        set_chunk_data(png_bytes, chunk_type, data_bytes)
 
     def get(self, png_bytes, chunk_type=b'steg'):
         assert png_bytes[:PNG_START_BYTES_LEN] == PNG_START_BYTES, 'Invalid PNG'
-        return get_data_from_png(png_bytes, chunk_type)
+        return get_chunk_data(png_bytes, chunk_type)
 
 
 class FilterSteganographer(PngSteganographer):
     def get(self, png_buffer):
-        idat = get_data_from_png(png_buffer, b'IDAT')
+        idat = get_chunk_data(png_buffer, b'IDAT')
         decompressed = zlib.decompress(idat)
         size = get_png_size(png_buffer)
 
@@ -97,61 +36,62 @@ class FilterSteganographer(PngSteganographer):
         color_flags = get_png_color_flags(png_buffer)
         pixel_size = get_pixel_size(color_flags)
         line_size = size[0] * pixel_size + 1
+
         filter_bits = []
         for i in range(0, len(decompressed), line_size):
-            filter_bits.append(decompressed[i:i + line_size][0])
+            filter_bits.append(decompressed[i])
 
-        return filter_bits
+        print('filter bits found: ', ''.join(str(bit) for bit in filter_bits if bit < 2))
 
+        bits = ''.join(str(bit) for bit in filter_bits if bit < 2)
+        n = int(bits, base=2)
+        return n.to_bytes((n.bit_length() + 7) // 8, 'big')
 
-def print_png_chunks(png_bytes):
-    assert png_bytes[:PNG_START_BYTES_LEN] == PNG_START_BYTES, 'Invalid PNG'
+    def hide(self, png_buffer, data_bytes):
+        idat = get_chunk_data(png_buffer, b'IDAT')
+        decompressed = zlib.decompress(idat)
+        size = get_png_size(png_buffer)
 
-    cur_pos = PNG_START_BYTES_LEN
-    while True:
-        chunk = Chunk.from_bytes(png_bytes, cur_pos)
-        cur_pos += chunk.total_length
-        print(chunk)
+        bin_data = []  # array of 0, 1
 
-        if chunk.type == b'IEND':
-            break
+        for c in bin(int.from_bytes(data_bytes, 'big')).lstrip('0b'):
+            bin_data.append(int(c))
 
+        assert len(bin_data) <= size[1], 'Too much data'
 
-def get_png_size(png_bytes):
-    """:returns width, height"""
-    assert png_bytes[:PNG_START_BYTES_LEN] == PNG_START_BYTES, 'Invalid PNG'
-    ihdr = get_data_from_png(png_bytes, b'IHDR')
-    return struct.unpack('!II', ihdr[:8])
+        print("length of IDAT: {} bytes".format(len(idat)))
+        print("length of decompressed: {} bytes".format(len(zlib.decompress(idat))))
+        print("image size:", size)
 
+        color_flags = get_png_color_flags(png_buffer)
+        pixel_size = get_pixel_size(color_flags)
+        line_size = size[0] * pixel_size + 1
 
-def get_png_color_flags(png_bytes):
-    assert png_bytes[:PNG_START_BYTES_LEN] == PNG_START_BYTES, 'Invalid PNG'
-    ihdr = get_data_from_png(png_bytes, b'IHDR')
-    b = struct.unpack('b', ihdr[9:10])[0]
-    flags = {
-        'IS_ALPHA_USED': b & 0b100 != 0,
-        'IS_COLOR_USED': b & 0b010 != 0,
-        'IS_PALETTE_USED': b & 0b001 != 0
-    }
-    return flags
+        scanlines = []
+        filter_bits = []
+        for i in range(0, len(decompressed), line_size):
+            filter_bits.append(decompressed[i])
+            scanlines.append(decompressed[i + 1:i + line_size])
 
+        reconstructed_scanlines = []
+        for i in range(len(scanlines)):
+            reconstructed_scanlines.append(reconstruct_scanline(
+                FILTER[filter_bits[i]], scanlines[i], reconstructed_scanlines[i-1] if i > 0 else None, pixel_size))
 
-def get_pixel_size(color_flags):
-    pixel_size = 3 if color_flags['IS_COLOR_USED'] else 1
-    pixel_size += 1 if color_flags['IS_ALPHA_USED'] else 0
-    return pixel_size
+        filtered_scanlines = []
+        for i in range(len(scanlines)):
+            filtered_scanlines.append(filter_scanline(
+                FILTER[bin_data[i] if i < len(bin_data) else 2],
+                reconstructed_scanlines[i],
+                reconstructed_scanlines[i-1] if i > 0 else None,
+                pixel_size
+            ))
 
+        new_idat_decompressed = bytearray()
+        for i in range(len(filtered_scanlines)):
+            new_idat_decompressed.append(bin_data[i] if i < len(bin_data) else 2)
+            new_idat_decompressed.extend(filtered_scanlines[i])
 
-def get_data_from_png(png_bytes, chunk_type):
-    assert png_bytes[:PNG_START_BYTES_LEN] == PNG_START_BYTES, 'Invalid PNG'
-
-    cur_pos = PNG_START_BYTES_LEN
-    while True:
-        chunk = Chunk.from_bytes(png_bytes, cur_pos)
-        cur_pos += chunk.total_length
-
-        if chunk.type == chunk_type:
-            return chunk.data
-
-        if chunk.type == b'IEND':
-            break
+        new_idat_data = zlib.compress(new_idat_decompressed)
+        res = set_chunk_data(png_buffer, b'IDAT', new_idat_data)
+        return res
