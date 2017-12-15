@@ -1,7 +1,9 @@
 import struct
 import binascii
 
-PNG_START_BYTES = bytes((137, 80, 78, 71, 13, 10, 26, 10))
+import zlib
+
+PNG_START_BYTES = bytearray((137, 80, 78, 71, 13, 10, 26, 10))
 PNG_START_BYTES_LEN = 8
 
 
@@ -48,6 +50,60 @@ class Chunk:
                        self.crc, self.calculate_crc())
 
 
+class PngSteganographer:
+    def hide(self, buffer, data_bytes):
+        raise NotImplementedError
+
+    def get(self, buffer):
+        raise NotImplementedError
+
+
+class SimpleSteganographer(PngSteganographer):
+    def hide(self, png_bytes, data_bytes, chunk_type=b'steg'):
+        assert png_bytes[:PNG_START_BYTES_LEN] == PNG_START_BYTES, 'Invalid PNG'
+        res_bytes = b''
+        res_bytes += PNG_START_BYTES
+
+        data_chunk = Chunk(len(data_bytes), chunk_type, data_bytes).to_bytes()
+        cur_pos = PNG_START_BYTES_LEN
+        while True:
+            chunk = Chunk.from_bytes(png_bytes, cur_pos)
+            cur_pos += chunk.total_length
+            res_bytes += chunk.to_bytes()
+
+            if chunk.type == b'IHDR':
+                res_bytes += data_chunk
+
+            if chunk.type == b'IEND':
+                break
+
+        return res_bytes
+
+    def get(self, png_bytes, chunk_type=b'steg'):
+        assert png_bytes[:PNG_START_BYTES_LEN] == PNG_START_BYTES, 'Invalid PNG'
+        return get_data_from_png(png_bytes, chunk_type)
+
+
+class FilterSteganographer(PngSteganographer):
+    def get(self, png_buffer):
+        idat = get_data_from_png(png_buffer, b'IDAT')
+        decompressed = zlib.decompress(idat)
+        size = get_png_size(png_buffer)
+
+        print("length of IDAT: {} bytes".format(len(idat)))
+        print("length of decompressed: {} bytes".format(len(zlib.decompress(idat))))
+        print("image size:", size)
+
+        color_flags = get_png_color_flags(png_buffer)
+        pixel_size = get_pixel_size(color_flags)
+        line_size = size[0] * pixel_size + 1
+        filter_bits = []
+        for i in range(0, len(decompressed), line_size):
+            filter_bits.append(decompressed[i:i + line_size][0])
+
+        return filter_bits
+
+
 def print_png_chunks(png_bytes):
     assert png_bytes[:PNG_START_BYTES_LEN] == PNG_START_BYTES, 'Invalid PNG'
 
@@ -61,28 +117,32 @@ def print_png_chunks(png_bytes):
             break
 
 
-def hide_data_in_png(png_bytes, data_bytes, chunk_type=b'steg'):
+def get_png_size(png_bytes):
+    """:returns width, height"""
     assert png_bytes[:PNG_START_BYTES_LEN] == PNG_START_BYTES, 'Invalid PNG'
-    res_bytes = b''
-    res_bytes += PNG_START_BYTES
-
-    data_chunk = Chunk(len(data_bytes), chunk_type, data_bytes).to_bytes()
-    cur_pos = PNG_START_BYTES_LEN
-    while True:
-        chunk = Chunk.from_bytes(png_bytes, cur_pos)
-        cur_pos += chunk.total_length
-        res_bytes += chunk.to_bytes()
-
-        if chunk.type == b'IHDR':
-            res_bytes += data_chunk
-
-        if chunk.type == b'IEND':
-            break
-
-    return res_bytes
+    ihdr = get_data_from_png(png_bytes, b'IHDR')
+    return struct.unpack('!II', ihdr[:8])
 
 
-def get_data_from_png(png_bytes, chunk_type=b'steg'):
+def get_png_color_flags(png_bytes):
+    assert png_bytes[:PNG_START_BYTES_LEN] == PNG_START_BYTES, 'Invalid PNG'
+    ihdr = get_data_from_png(png_bytes, b'IHDR')
+    b = struct.unpack('b', ihdr[9:10])[0]
+    flags = {
+        'IS_ALPHA_USED': b & 0b100 != 0,
+        'IS_COLOR_USED': b & 0b010 != 0,
+        'IS_PALETTE_USED': b & 0b001 != 0
+    }
+    return flags
+
+
+def get_pixel_size(color_flags):
+    pixel_size = 3 if color_flags['IS_COLOR_USED'] else 1
+    pixel_size += 1 if color_flags['IS_ALPHA_USED'] else 0
+    return pixel_size
+
+
+def get_data_from_png(png_bytes, chunk_type):
     assert png_bytes[:PNG_START_BYTES_LEN] == PNG_START_BYTES, 'Invalid PNG'
 
     cur_pos = PNG_START_BYTES_LEN
