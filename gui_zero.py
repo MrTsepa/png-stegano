@@ -30,7 +30,7 @@ def save_file():
         buffer_with_data = FilterSteganographer().hide(buffer, bytes(text_box_secret.get(), encoding='utf8'))
     except AssertionError as e:
         error('Error', e)
-        return 
+        return
     f = asksaveasfile(mode='wb', defaultextension=".png")
     if f is None:  # asksaveasfile return `None` if dialog closed with "cancel".
         return
