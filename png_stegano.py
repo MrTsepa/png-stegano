@@ -1,7 +1,11 @@
+import random
 import zlib
 
 from filter_utils import reconstruct_scanline, FILTER, filter_scanline
 from png_utils import *
+
+
+KEY = 1093212
 
 
 class PngSteganographer:
@@ -31,7 +35,6 @@ class FilterSteganographer(PngSteganographer):
 
     def get(self, png_buffer):
         """
-        Joins all filter bits which are 0 or 1, then decodes this bit sequence to bytes
         :return decoded bytes
         """
 
@@ -51,9 +54,17 @@ class FilterSteganographer(PngSteganographer):
         for i in range(0, len(decompressed), line_size):
             filter_bits.append(decompressed[i])
 
-        print('filter bits found: ', ''.join(str(bit) for bit in filter_bits if bit < 2))
+        print('filter bits found: ', ''.join(str(bit) for bit in filter_bits))
 
-        bits = ''.join(str(bit) for bit in filter_bits if bit < 2)
+        random.seed(KEY)
+        samapled_positions = random.sample(range(size[1]), size[1])
+
+        print(samapled_positions)
+        bits_positioned = list(map(lambda p: filter_bits[p], samapled_positions))
+        # bits = ''.join(str(bit) for bit in filter_bits if bit < 2)
+        bits = ''.join(str(bit) for bit in bits_positioned if bit < 2)
+        print(bits)
+        bits = bits[:len(bits) - len(bits) % 8]
         if not bits:
             bits = '0'
         n = int(bits, base=2)
@@ -61,9 +72,6 @@ class FilterSteganographer(PngSteganographer):
 
     def hide(self, png_buffer, data_bytes):
         """
-        Firstly represents data_bytes as bit sequence,
-        then for each line of first `len(bits)` reconstructs line if it already has filter
-        and applies filter None or Sub (0 or 1). As a result binary data is hidden in filter bytes.
         :return: new png as bytes
         """
 
@@ -72,9 +80,9 @@ class FilterSteganographer(PngSteganographer):
         size = get_png_size(png_buffer)
 
         bin_data = []  # array of 0, 1
-
-        for c in bin(int.from_bytes(data_bytes, 'big')).lstrip('0b'):
-            bin_data.append(int(c))
+        for byte in data_bytes:
+            for c in '{:08b}'.format(byte):
+                bin_data.append(int(c))
 
         assert len(bin_data) <= size[1], 'Too much data'
 
@@ -92,23 +100,28 @@ class FilterSteganographer(PngSteganographer):
             filter_bits.append(decompressed[i])
             scanlines.append(decompressed[i + 1:i + line_size])
 
-        reconstructed_scanlines = []
-        for i in range(len(scanlines)):
-            reconstructed_scanlines.append(reconstruct_scanline(
-                FILTER[filter_bits[i]], scanlines[i], reconstructed_scanlines[i-1] if i > 0 else None, pixel_size))
+        new_filter_bits = filter_bits[:]
 
-        filtered_scanlines = []
-        for i in range(len(scanlines)):
-            filtered_scanlines.append(filter_scanline(
-                FILTER[bin_data[i] if i < len(bin_data) else 2],
-                reconstructed_scanlines[i],
-                reconstructed_scanlines[i-1] if i > 0 else None,
-                pixel_size
-            ))
+        random.seed(KEY)
+        samapled_positions = random.sample(range(size[1]), size[1])[:len(bin_data)]
+        print(samapled_positions)
+        print(''.join([str(x) for x in bin_data]))
+
+        for i, p in enumerate(samapled_positions):
+            new_filter_bits[p] = bin_data[i]
+
+        for i, p in enumerate(sorted(samapled_positions)):
+            rec_scanline = reconstruct_scanline(
+                FILTER[filter_bits[p]], scanlines[p], scanlines[p - 1] if p > 0 else None, pixel_size)
+            filtered_scanline = filter_scanline(
+                FILTER[new_filter_bits[p]], rec_scanline, scanlines[p - 1] if p > 0 else None, pixel_size)
+            scanlines[p] = filtered_scanline[:]
+
+        filtered_scanlines = scanlines
 
         new_idat_decompressed = bytearray()
         for i in range(len(filtered_scanlines)):
-            new_idat_decompressed.append(bin_data[i] if i < len(bin_data) else 2)
+            new_idat_decompressed.append(new_filter_bits[i])
             new_idat_decompressed.extend(filtered_scanlines[i])
 
         new_idat_data = zlib.compress(new_idat_decompressed)
