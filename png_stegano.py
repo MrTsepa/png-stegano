@@ -1,8 +1,7 @@
 import zlib
 
 from filter_utils import reconstruct_scanline, FILTER, filter_scanline
-from png_utils import set_chunk_data, PNG_START_BYTES_LEN, PNG_START_BYTES, get_chunk_data, get_png_size, \
-    get_png_color_flags, get_pixel_size
+from png_utils import *
 
 
 class PngSteganographer:
@@ -14,6 +13,13 @@ class PngSteganographer:
 
 
 class SimpleSteganographer(PngSteganographer):
+    """
+    Simply inserts additional chunk after IHDR.
+    All chunk_type letters should be lowercase
+    to show png decoder to pass over this chunk,
+    otherwise behaviour of decoder is undefined.
+    """
+
     def hide(self, png_bytes, data_bytes, chunk_type=b'steg'):
         return add_chunk_data(png_bytes, chunk_type, data_bytes)
 
@@ -22,7 +28,13 @@ class SimpleSteganographer(PngSteganographer):
 
 
 class FilterSteganographer(PngSteganographer):
+
     def get(self, png_buffer):
+        """
+        Joins all filter bits which are 0 or 1, then decodes this bit sequence to bytes
+        :return decoded bytes
+        """
+
         idat = get_chunk_data(png_buffer, b'IDAT')
         decompressed = zlib.decompress(idat)
         size = get_png_size(png_buffer)
@@ -48,6 +60,13 @@ class FilterSteganographer(PngSteganographer):
         return n.to_bytes((n.bit_length() + 7) // 8, 'big')
 
     def hide(self, png_buffer, data_bytes):
+        """
+        Firstly represents data_bytes as bit sequence,
+        then for each line of first `len(bits)` reconstructs line if it already has filter
+        and applies filter None or Sub (0 or 1). As a result binary data is hidden in filter bytes.
+        :return: new png as bytes
+        """
+
         idat = get_chunk_data(png_buffer, b'IDAT')
         decompressed = zlib.decompress(idat)
         size = get_png_size(png_buffer)

@@ -1,5 +1,13 @@
 class Filter(object):
+    """
+    https://www.w3.org/TR/2003/REC-PNG-20031110/#9-table91
+    interface for filter
 
+    x:	the byte being filtered;
+    a:	the byte corresponding to x in the pixel before the pixel containing x
+    b:	the byte corresponding to x in the previous scanline;
+    c:	the byte corresponding to b in the pixel before the pixel containing b
+    """
     def filter(self, x, a, b, c):
         raise NotImplementedError
 
@@ -72,6 +80,7 @@ FILTER = {
 
 
 def filter_scanline(filter, scanline, prev_scanline=None, pixel_size=1):
+    """apply filter to scanline (aka line of pixels)"""
     res = []
     for i in range(len(scanline)):
         a = scanline[i - pixel_size] if i >= pixel_size else 0
@@ -82,6 +91,7 @@ def filter_scanline(filter, scanline, prev_scanline=None, pixel_size=1):
 
 
 def reconstruct_scanline(filter, scanline, prev_scanline=None, pixel_size=1):
+    """reconstruct filtered scanline (aka line of pixels)"""
     res = []
     for i in range(len(scanline)):
         a = res[i - pixel_size] if i >= pixel_size else 0

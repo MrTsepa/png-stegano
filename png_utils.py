@@ -50,6 +50,7 @@ class Chunk:
 
 
 def print_png_chunks(png_bytes):
+    """prints all chunks of png, format is defined in Chunk.__str__"""
     assert png_bytes[:PNG_START_BYTES_LEN] == PNG_START_BYTES, 'Invalid PNG'
 
     cur_pos = PNG_START_BYTES_LEN
@@ -82,12 +83,14 @@ def get_png_color_flags(png_bytes):
 
 
 def get_pixel_size(color_flags):
+    """:return bytes per pixel"""
     pixel_size = 3 if color_flags['IS_COLOR_USED'] else 1
     pixel_size += 1 if color_flags['IS_ALPHA_USED'] else 0
     return pixel_size
 
 
 def get_chunk_data(png_bytes, chunk_type):
+    """:return data bytes of chunk with given type or None"""
     assert png_bytes[:PNG_START_BYTES_LEN] == PNG_START_BYTES, 'Invalid PNG'
 
     cur_pos = PNG_START_BYTES_LEN
@@ -103,6 +106,10 @@ def get_chunk_data(png_bytes, chunk_type):
 
 
 def add_chunk_data(png_bytes, chunk_type, data_bytes):
+    """
+    add chunk with given type and data after IHDR chunk
+    :return new png as bytes
+    """
     assert png_bytes[:PNG_START_BYTES_LEN] == PNG_START_BYTES, 'Invalid PNG'
     res_bytes = b''
     res_bytes += PNG_START_BYTES
@@ -124,6 +131,10 @@ def add_chunk_data(png_bytes, chunk_type, data_bytes):
 
 
 def set_chunk_data(png_bytes, chunk_type, data_bytes):
+    """
+    change data field of chunk with given type
+    :return new png as bytes
+    """
     assert png_bytes[:PNG_START_BYTES_LEN] == PNG_START_BYTES, 'Invalid PNG'
     res_bytes = b''
     res_bytes += PNG_START_BYTES
