@@ -9,17 +9,26 @@ input_path = None
 buffer = None
 
 
+def read_key():
+    try:
+        return int(key_input.get())
+    except:
+        return None
+
+
 def choose_file():
     global input_path, buffer
     input_path = askopenfilename(
         filetypes=(("PNG images", "*.png"), ("All Files", "*.*")),
         title="Choose image"
     )
+    if not input_path:
+        return
     input_path_widget.set_text(input_path)
     with open(input_path, 'rb') as f:
         buffer = f.read()
 
-    hidden_data = FilterSteganographer().get(buffer)
+    hidden_data = FilterSteganographer().get(buffer, read_key())
     hidden_data_text.set("Hidden data found: ")
     if hidden_data and any(chr(byte) in string.printable for byte in hidden_data):
         hidden_data_red_text.set(hidden_data)
@@ -32,7 +41,8 @@ def save_file():
         error('Error', 'No file loaded!')
         return
     try:
-        buffer_with_data = FilterSteganographer().hide(buffer, bytes(text_box_secret.get(), encoding='utf8'))
+        buffer_with_data = FilterSteganographer().\
+            hide(buffer, bytes(text_box_secret.get(), encoding='utf8'), read_key())
     except AssertionError as e:
         error('Error', e)
         return
@@ -69,5 +79,8 @@ save_file_widget = PushButton(
 
 hidden_data_text = Text(horizontal_box2, "", grid=(0, 0))
 hidden_data_red_text = Text(horizontal_box2, "", grid=(0, 1), color='red')
+
+key_inpu_text = Text(horizontal_box3, "Key: ", grid=(0, 0))
+key_input = TextBox(horizontal_box3, "", grid=(0, 1))
 
 app.display()
